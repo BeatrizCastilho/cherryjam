@@ -1,39 +1,44 @@
-const CACHE_NAME = 'cherryjam-v2';
+const CACHE_NAME = 'cherryjam-v3';
+
 const ASSETS = [
   '/',
   '/index.html',
   '/index.css',
   '/index.js',
-  '/manifest.json'
+  '/manifest.json',
+  '/cerejinha.jpg'
 ];
 
-// Instalação e Cache
-self.addEventListener('install', e => {
-  e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll(ASSETS);
-    }).then(() => self.skipWaiting())
+// Instalação
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(ASSETS))
+      .then(() => self.skipWaiting())
   );
 });
 
-// Ativação e Limpeza de caches antigos
-self.addEventListener('activate', e => {
-  e.waitUntil(
-    caches.keys().then(keys => {
-      return Promise.all(
+// Ativação
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(
         keys.map(key => {
           if (key !== CACHE_NAME) {
             return caches.delete(key);
           }
         })
-      );
-    })
+      )
+    )
   );
+
+  self.clients.claim();
 });
 
-// Estratégia de Cache: Network First com Fallback para Cache
-self.addEventListener('fetch', e => {
-  e.respondWith(
-    fetch(e.request).catch(() => caches.match(e.request))
+// Fetch
+self.addEventListener('fetch', event => {
+  event.respondWith(
+    caches.match(event.request)
+      .then(response => response || fetch(event.request))
   );
 });
