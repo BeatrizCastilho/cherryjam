@@ -1,64 +1,102 @@
-btnLogin.addEventListener('click', async () => {
+// ==========================================
+// 🔐 SISTEMA DE AUTENTICAÇÃO LOCAL
+// ==========================================
 
+const loginScreen = document.getElementById('login-screen');
+const appContent = document.getElementById('app-content');
+
+const authEmail = document.getElementById('auth-email');
+const authPassword = document.getElementById('auth-password');
+const authError = document.getElementById('auth-error');
+
+const btnLogin = document.getElementById('btn-login');
+const btnSignup = document.getElementById('btn-signup');
+const btnLogout = document.getElementById('btn-logout');
+
+let currentUser = null;
+
+function getLocalUsers() {
+  return JSON.parse(localStorage.getItem('cherry_users')) || [];
+}
+function saveLocalUsers(users) {
+  localStorage.setItem('cherry_users', JSON.stringify(users));
+}
+
+btnLogin.addEventListener('click', () => {
   const email = authEmail.value.trim().toLowerCase();
   const password = authPassword.value.trim();
-
   authError.innerText = "";
-
-  const response = await fetch("/api/login", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      email,
-      password
-    })
-  });
-
-  const data = await response.json();
-
-  if (!data.success) {
-    authError.innerText = data.error;
+  if (!email || !password) {
+    authError.innerText = "🍒 Digite o e-mail e a senha.";
     return;
   }
-
-  currentUser = data.user;
-
+  const users = getLocalUsers();
+  const foundUser = users.find(user => user.email === email && user.password === password);
+  if (!foundUser) {
+    authError.innerText = "❌ E-mail ou senha incorretos.";
+    return;
+  }
+  currentUser = foundUser;
   logarUsuarioUI();
 });
 
-btnSignup.addEventListener('click', async () => {
-
+btnSignup.addEventListener('click', () => {
   const email = authEmail.value.trim().toLowerCase();
   const password = authPassword.value.trim();
-
   authError.innerText = "";
-
-  const response = await fetch("/api/signup", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      email,
-      password
-    })
-  });
-
-  const data = await response.json();
-
-  if (!data.success) {
-    authError.innerText = data.error;
+  if (!email || !password) {
+    authError.innerText = "🍒 Preencha todos os campos.";
     return;
   }
-
-  currentUser = data.user;
-
+  if (password.length < 4) {
+    authError.innerText = "🍒 A senha precisa ter no mínimo 4 caracteres.";
+    return;
+  }
+  const users = getLocalUsers();
+  if (users.some(user => user.email === email)) {
+    authError.innerText = "❌ Este e-mail já está cadastrado.";
+    return;
+  }
+  const newUser = { uid: "user_" + Date.now(), email, password };
+  users.push(newUser);
+  saveLocalUsers(users);
+  currentUser = newUser;
   alert("✨ Conta criada com sucesso!");
-
   logarUsuarioUI();
 });
+
+function logarUsuarioUI() {
+  loginScreen.style.display = "none";
+  appContent.style.display = "block";
+  authEmail.value = "";
+  authPassword.value = "";
+  sessionStorage.setItem("cherry_active_session", JSON.stringify(currentUser));
+  document.getElementById('logged-user-email').innerText = currentUser.email.split('@')[0] + "🍒";
+  ouvirDiarioBanco(currentUser.uid);
+  carregarFitasPersonalizadas();
+  atualizarEstatisticasDiario();
+  iniciarBroadcastChannel();
+}
+
+btnLogout.addEventListener('click', (e) => {
+  e.preventDefault();
+  currentUser = null;
+  sessionStorage.removeItem("cherry_active_session");
+  loginScreen.style.display = "flex";
+  appContent.style.display = "none";
+  if (broadcastChannel) broadcastChannel.close();
+});
+
+function verificarSessaoAtiva() {
+  const session = sessionStorage.getItem("cherry_active_session");
+  if (session) {
+    currentUser = JSON.parse(session);
+    logarUsuarioUI();
+  } else {
+    loginScreen.style.display = "flex";
+    appContent.style.display = "none";
+  }
+}
 
 // ==========================================
 // 🕹️ ROTEADOR DE PÁGINAS
@@ -274,190 +312,59 @@ const diaryTitleInput = document.getElementById('diary-title');
 const diaryContentInput = document.getElementById('diary-content');
 const diaryList = document.getElementById('diary-list');
 
-saveDiaryBtn.addEventListener('click', async () => {
-
+saveDiaryBtn.addEventListener('click', () => {
   if (!currentUser) return;
-
-  const title =
-    diaryTitleInput.value.trim();
-
-  const content =
-    diaryContentInput.value.trim();
-
-  if (!title || !content) {
-    alert("🍒 Preencha tudo antes de salvar.");
-    return;
-  }
-
-  const response = await fetch(
-    "/api/diario",
-    {
-      method: "POST",
-
-      headers: {
-        "Content-Type": "application/json"
-      },
-
-      body: JSON.stringify({
-        uid: currentUser.uid,
-        title,
-        content
-      })
-    }
-  );
-
-  const data =
-    await response.json();
-
-  if (!data.success) {
-    alert("Erro ao salvar.");
-    return;
-  }
-
+  const title = diaryTitleInput.value.trim();
+  const content = diaryContentInput.value.trim();
+  if (!title || !content) return alert("🍒 Preencha tudo antes de salvar.");
+  const posts = JSON.parse(localStorage.getItem('cherry_diary_posts')) || [];
+  const novoPost = { id: "post_" + Date.now(), uid: currentUser.uid, title, content };
+  posts.unshift(novoPost);
+  localStorage.setItem('cherry_diary_posts', JSON.stringify(posts));
   diaryTitleInput.value = "";
   diaryContentInput.value = "";
-
-  await ouvirDiarioBanco(
-    currentUser.uid
-  );
-
+  ouvirDiarioBanco(currentUser.uid);
   atualizarEstatisticasDiario();
+  enviarMensagemBroadcast({ type: 'diario', uid: currentUser.uid });
+  if (Notification.permission === 'granted') {
+    new Notification('✨ Novo segredo guardado!', { body: `"${title}" foi trancado no backstage.` });
+  }
 });
 
-async function ouvirDiarioBanco(uid) {
-
-  const response =
-    await fetch(`/api/diario/${uid}`);
-
-  const posts =
-    await response.json();
-
-  const originalCards = `
-    <div class="diary-card">
-      <h4>“Pretty isn’t enough”</h4>
-      <p>Uma análise sobre como músicas pop escondem sentimentos atrás do glitter.</p>
-    </div>
-
-    <div class="diary-card">
-      <h4>“Lipstick & heartbreaks”</h4>
-      <p>A estética rebelde dos anos 2000 e a cultura emo glam.</p>
-    </div>
-  `;
-
+function ouvirDiarioBanco(uid) {
+  const originalCards = `<div class="diary-card"><h4>“Pretty isn’t enough”</h4><p>Uma análise sobre como músicas pop escondem sentimentos atrás do glitter.</p></div><div class="diary-card"><h4>“Lipstick & heartbreaks”</h4><p>A estética rebelde dos anos 2000 e a cultura emo glam.</p></div>`;
+  const posts = JSON.parse(localStorage.getItem('cherry_diary_posts')) || [];
+  const userPosts = posts.filter(post => post.uid === uid);
   let dynamicCards = "";
-
-  posts.forEach(post => {
-
-    dynamicCards += `
-      <div class="diary-card dynamic-card">
-
-        <button
-          class="delete-diary-btn"
-          onclick="deletarRegistroLocal('${post.id}')">
-          🗑️
-        </button>
-
-        <h4>“${post.title}”</h4>
-
-        <p>${post.content}</p>
-
-      </div>
-    `;
-
+  userPosts.forEach(entry => {
+    dynamicCards += `<div class="diary-card dynamic-card"><button class="delete-diary-btn" onclick="deletarRegistroLocal('${entry.id}')">🗑️</button><h4>“${entry.title.replace(/</g, '&lt;')}”</h4><p>${entry.content.replace(/</g, '&lt;')}</p></div>`;
   });
-
-  diaryList.innerHTML =
-    originalCards + dynamicCards;
+  diaryList.innerHTML = originalCards + dynamicCards;
 }
-window.deletarRegistroLocal = async function(postId) {
-
-  if (!confirm("🍒 Deseja apagar este pensamento?"))
-    return;
-
-  await fetch(`/api/diario/${postId}`, {
-    method: "DELETE"
-  });
-
-  await ouvirDiarioBanco(
-    currentUser.uid
-  );
-
+window.deletarRegistroLocal = function(postId) {
+  if (!confirm("🍒 Deseja apagar este pensamento?")) return;
+  let posts = JSON.parse(localStorage.getItem('cherry_diary_posts')) || [];
+  posts = posts.filter(post => post.id !== postId);
+  localStorage.setItem('cherry_diary_posts', JSON.stringify(posts));
+  ouvirDiarioBanco(currentUser.uid);
   atualizarEstatisticasDiario();
+  enviarMensagemBroadcast({ type: 'diario', uid: currentUser.uid });
 };
 
-async function atualizarEstatisticasDiario() {
-
-  if (!currentUser) return;
-
-  const response =
-    await fetch(`/api/diario/${currentUser.uid}`);
-
-  const userPosts =
-    await response.json();
-
-  const total =
-    userPosts.length;
-
-  const totalChars =
-    userPosts.reduce(
-      (acc, p) =>
-        acc + (p.title + p.content).length,
-      0
-    );
-
-  const avgLen =
-    total
-      ? (totalChars / total).toFixed(0)
-      : 0;
-
-  const words =
-    userPosts.flatMap(
-      p =>
-        (p.title + " " + p.content)
-          .toLowerCase()
-          .split(/\s+/)
-    );
-
+function atualizarEstatisticasDiario() {
+  const posts = JSON.parse(localStorage.getItem('cherry_diary_posts')) || [];
+  const userPosts = posts.filter(p => p.uid === currentUser.uid);
+  const total = userPosts.length;
+  const totalChars = userPosts.reduce((acc, p) => acc + (p.title + p.content).length, 0);
+  const avgLen = total ? (totalChars / total).toFixed(0) : 0;
+  const words = userPosts.flatMap(p => (p.title + " " + p.content).toLowerCase().split(/\s+/));
   const freq = {};
-
-  words.forEach(w => {
-    if (w.length > 3)
-      freq[w] = (freq[w] || 0) + 1;
-  });
-
+  words.forEach(w => { if (w.length > 3) freq[w] = (freq[w]||0)+1; });
   let mostCommon = "glitter";
   let maxFreq = 0;
-
-  for (let w in freq) {
-
-    if (freq[w] > maxFreq) {
-
-      maxFreq = freq[w];
-      mostCommon = w;
-
-    }
-
-  }
-
-  const statsDiv =
-    document.getElementById(
-      'diary-stats'
-    );
-
-  statsDiv.innerHTML = `
-    <div class="stat-card">
-      📝 ${total} segredos guardados
-    </div>
-
-    <div class="stat-card">
-      ✍️ Média de ${avgLen} caracteres
-    </div>
-
-    <div class="stat-card">
-      💬 Palavra mais usada:
-      "${mostCommon}"
-    </div>
-  `;
+  for (let w in freq) if (freq[w] > maxFreq) { maxFreq = freq[w]; mostCommon = w; }
+  const statsDiv = document.getElementById('diary-stats');
+  if (statsDiv) statsDiv.innerHTML = `<div class="stat-card">📝 ${total} segredos guardados</div><div class="stat-card">✍️ Média de ${avgLen} caracteres</div><div class="stat-card">💬 Palavra mais usada: "${mostCommon}"</div>`;
 }
 
 document.getElementById('export-data-btn')?.addEventListener('click', () => {
@@ -566,25 +473,4 @@ window.addEventListener("load", () => {
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("service-worker.js").then(() => console.log("✅ SW")).catch(err => console.log("❌ SW", err));
   }
-  // ==========================================
-// 🍒 SPLASH SCREEN
-// ==========================================
-
-window.addEventListener("load", () => {
-
-  setTimeout(() => {
-
-    const splash = document.getElementById("splash-screen");
-
-    if(splash){
-      splash.classList.add("hide");
-
-      setTimeout(() => {
-        splash.remove();
-      }, 800);
-    }
-
-  }, 2000);
-
-});
 });
