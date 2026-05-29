@@ -1,21 +1,30 @@
 {
   "name": "Cherry Jam Underground",
   "short_name": "CherryJam",
-  "start_url": ".",
+  "description": "Backstage secreto da Cerejinha",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#0F0B12",
-  "theme_color": "#FF3CA6",
   "orientation": "portrait",
+  "background_color": "#ff3ca6",
+  "theme_color": "#ff3ca6",
+
   "icons": [
     {
-      "src": "icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "icons/icon-512.png",
+      "src": "cerejinha.jpg",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ],
+
+  "screenshots": [
+    {
+      "src": "cerejinha.jpg",
+      "sizes": "1080x1080",
+      "type": "image/jpeg",
+      "form_factor": "wide",
+      "label": "Cherry Jam Splash"
     }
   ]
 }
